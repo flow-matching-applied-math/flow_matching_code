@@ -7,4 +7,4 @@ Code for the paper:
 
 Flow Matching impressive image
 
-![Flow Matching study](images/impressive_image_2.png)
+![Test](images/impressive_image_2.png)
