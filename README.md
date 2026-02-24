@@ -1,10 +1,5 @@
 # Flow Matching for Applied Mathematicians
 
-**Authors:**  
-Alasdair Newson · Emile Pierret  
-
-Code accompanying the paper:
-
 > *Flow Matching for Applied Mathematicians*  
 > Emile Pierret, Valentine Tosel, Julie Delon, Alasdair Newson
 
