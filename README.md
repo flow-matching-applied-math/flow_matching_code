@@ -5,6 +5,6 @@
 Code for the paper:
 "Flow Matching for Applied mathematicians", Emile Pierret, Valentine Tosel, Julie Delon, Alasdair Newson
 
-Flow Matching impressive image
+Flow Matching study
 
-![Test](images/flow_matching_study.png)
+![Flow Matching study](images/flow_matching_study.png)
