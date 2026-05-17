@@ -19,7 +19,7 @@ The main function is named ```main_flow_matching.py``` and allows several argume
 - ```image_size``` (int): size of the image (default: -1). If ``target_dataset`` is in the list of known databases, then the image size is already fixed, and this parameter is ignored. Otherwise (custom dataset)
     - If the image size is equal to -1, then the behaviour depends on the ``target_dataset``.  If it is not known (custom database), then the image size is fixed to the size of the first image of the ```target_dataset``` directory
     - If the image size is greater than 0, then we consider that the image is square, and equal to size ``image_size``$\times$``image_size``.
-- ```n_channels``` (int): the number of channels of the image (default: 1). If the ``n_channels`` 
+- ```n_channels``` (int): the number of channels of the image (default: 1) and the noise (these are necessarily the same).
 - ```steps_sampler```(int): number of steps in the Euler scheme (default: 40).
 - ```schedule``` (string): name of schedule to use in Flow Matching (default: 'linear').
 - ```sample_every``` (int): regular interval of epochs after which the model's generation results are sampled (default: 20)

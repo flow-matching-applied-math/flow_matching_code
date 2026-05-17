@@ -101,10 +101,10 @@ def fm_training_step(model, x0, x1, device, arch="potential", schedule="linear",
 def sample_euler(model, source_loader, steps=50, device="cuda", arch="unet_tiny"):
 	model.eval()
 	h = 1.0 / steps
-    torch.manual_seed(123)
-    # get batch of source data
-    x = next(iter(source_loader))[:n_samples, :, :, :].to(device)
-    
+	torch.manual_seed(123)
+	# get batch of source data
+	x = next(iter(source_loader))[:n_samples, :, :, :].to(device)
+	
 	for k in range(steps):
 		t = torch.full((x.shape[0],), (k + 0.5) / steps, device=device)
 		v, _ = get_velocity(model, x, t, arch)
@@ -112,29 +112,29 @@ def sample_euler(model, source_loader, steps=50, device="cuda", arch="unet_tiny"
 	return x
 
 def sample_euler_trajectory(model, source_loader, n_samples, steps=50, device="cuda", arch="unet_tiny"):
-    model.eval()
-    h = 1.0 / steps
+	model.eval()
+	h = 1.0 / steps
 
-    torch.manual_seed(123)
+	torch.manual_seed(123)
 
-    # get batch of source data
-    x = next(iter(source_loader))[:n_samples, :, :, :].to(device)
+	# get batch of source data
+	x = next(iter(source_loader))[:n_samples, :, :, :].to(device)
 
-    # preallocate trajectory tensor: (steps, n_samples, C, H, W)
-    traj = torch.empty(
-        (steps, n_samples, *x.shape[1:]),
-        device=device,
-        dtype=x.dtype,
-    )
+	# preallocate trajectory tensor: (steps, n_samples, C, H, W)
+	traj = torch.empty(
+		(steps, n_samples, *x.shape[1:]),
+		device=device,
+		dtype=x.dtype,
+	)
 
-    with torch.no_grad():
-        for k in range(steps):
-            t = torch.full((n_samples,), (k + 0.5) / steps, device=device)
-            v, _ = get_velocity(model, x, t, arch)
-            x = x + h * v
-            traj[k].copy_(x)  # write in-place, no growing list
+	with torch.no_grad():
+		for k in range(steps):
+			t = torch.full((n_samples,), (k + 0.5) / steps, device=device)
+			v, _ = get_velocity(model, x, t, arch)
+			x = x + h * v
+			traj[k].copy_(x)  # write in-place, no growing list
 
-    return traj
+	return traj
 
 	# model.eval()
 	# h = 1.0 / steps
@@ -172,7 +172,7 @@ def main():
 	parser.add_argument("--lr", type=float, default=3e-4)
 	parser.add_argument("--wd", type=float, default=0.0)
 	parser.add_argument("--image_size", type=int, default=-1)
-	parser.add_argument("--n_channels", type=int, default=-1)
+	parser.add_argument("--n_channels", type=int, default=1)
 	parser.add_argument("--seed", type=int, default=42)
 	parser.add_argument("--num_workers", type=int, default=2)
 	parser.add_argument("--ckpt_every", type=int, default=20)
@@ -201,29 +201,59 @@ def main():
 	print("args.image_size: ",args.image_size)
 	print("args.n_channels: ",args.n_channels)
 
+
 	####################################
 	#########    DATASET SETUP   #######
 	####################################
 
-	train_loader,target_loader, source_loader,img_size,in_channels,out_channels =\
-		data_setup(target_dataset=args.target_dataset,\
-			source_dataset=args.source_dataset,\
-			shuffle_target=args.shuffle_target,\
-			shuffle_source=args.shuffle_source,\
-			image_size=args.image_size,\
-			n_channels=args.n_channels,\
-			batch_size=args.batch_size)
+	if(args.train==1):
+		target_loader,img_size_target,n_channels_target =\
+			setup_data_loader(dataset_name=args.target_dataset,\
+				shuffle_data=args.shuffle_target,\
+				image_size=args.image_size,\
+				n_channels=args.n_channels,\
+				batch_size=args.batch_size)
+		if(args.image_size == -1):
+			args.image_size = img_size_target
+		if(args.n_channels == -1):
+			args.n_channels = n_channels_target
 
-	# create a name for the dataset, if it is a directory
-	if(os.path.isdir(args.target_dataset)):
-		target_dataset_name = get_last_directory(args.target_dataset)
+		source_loader,img_size_source,n_channels_source =\
+			setup_data_loader(dataset_name=args.source_dataset,\
+				shuffle_data=args.shuffle_source,\
+				image_size=args.image_size,\
+				n_channels=args.n_channels,\
+				batch_size=args.batch_size)
+			
+
+		if not (img_size_target == img_size_source and n_channels_target == n_channels_source):
+			raise ValueError("Error in the creation of the data loaders: the image sizes and number of channels are consistent between source and target.")
+		image_size = img_size_target
+		n_channels = n_channels_target
+
+		# create a name for the dataset, if it is a directory
+		if(os.path.isdir(args.target_dataset)):
+			target_dataset_name = get_last_directory(args.target_dataset)
+		else:
+			target_dataset_name = args.target_dataset
+		if(os.path.isdir(args.source_dataset)):
+			source_dataset_name = get_last_directory(args.source_dataset)
+		else:
+			source_dataset_name = args.source_dataset
+
+		# create a data loader which loads batches of source and target data
+		train_loader = FMloader(target_loader,source_loader)
 	else:
+		# if we are testing a pre-trained model, the data shapes must be manually specified
 		target_dataset_name = args.target_dataset
-	if(os.path.isdir(args.source_dataset)):
-		source_dataset_name = get_last_directory(args.source_dataset)
-	else:
-		source_dataset_name = args.source_dataset
-		
+		source_loader,_,_ =\
+			setup_data_loader(dataset_name=args.source_dataset,\
+				shuffle_data=args.shuffle_source,\
+				image_size=args.image_size,\
+				n_channels=args.n_channels,\
+				batch_size=args.batch_size)
+		n_channels = args.n_channels
+
 
 	# add the target database to the save_dir
 	args.save_dir =args.save_dir +"/"+target_dataset_name
@@ -235,14 +265,13 @@ def main():
 	####################################
 
 	if args.arch == "unet_tiny":
-		model = UNetTiny(in_channels=in_channels, base=32, out_channels=out_channels).to(device)
+		model = UNetTiny(in_channels=n_channels, base=32, out_channels=n_channels).to(device)
 		print_model_stats(model, name="UNetTiny")
 	elif args.arch == "unet":
-		model = UNet(in_channels=in_channels, out_channels=out_channels,c=64).to(device)
+		model = UNet(in_channels=n_channels, out_channels=n_channels,c=64).to(device)
 		print_model_stats(model, name="UNet")
 	else:
 		print("Error, unknown architecture")
-
 
 	####################################
 	#########   TRAIN OR TEST   ########
@@ -292,7 +321,7 @@ def main():
 	else:
 		ckpt = torch.load(args.model_path, map_location=device)
 		state_dict = ckpt["model"]
-		model.load_state_dict(state_dict) 
+		model.load_state_dict(state_dict)
 		traj = sample_euler_trajectory(
 			model,
 			source_loader,
