@@ -65,4 +65,4 @@ The code may be used in testing, with a pretrained model: set ```--train 0``` in
 
 ## Results
 
-The output of the algorithm will be written to the ```save_dir``` directory (default "./results"). Furthermore, the code will create a results sub-directory corresponding to the name of the database. If the name is not specified, the code will use the name of the directory in which the training data is found.
+The output of the algorithm will be written to the ```save_dir``` directory (default "./results"). Furthermore, the code will create a results sub-directory corresponding to the name of the target distribution. If the name is not specified, the code will use the name of the directory in which the training data is found.
