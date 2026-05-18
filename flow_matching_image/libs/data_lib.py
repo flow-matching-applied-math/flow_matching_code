@@ -9,6 +9,7 @@ import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 from functools import partial
 from pathlib import Path
+import numpy as np
 import pdb
 
 
@@ -17,85 +18,62 @@ import pdb
 ###############################
 #####   DATASET SETUP      ####
 ###############################
-def data_setup(target_dataset="mnist",source_dataset="gaussian",shuffle_target=1,shuffle_source=1,image_size=-1,n_channels=-1,batch_size = 16):
 
 
-	# first, setup target dataset
-	if(target_dataset == "mnist"):
+
+def setup_data_loader(dataset_name="mnist",shuffle_data=1,image_size=-1,n_channels=-1,batch_size = 16):
+
+	# database setup
+	# this can be either a pre-defined distribution specified by a string (mnist, gaussian, cifar10),
+	# or a database specified by a directory name
+	if(dataset_name == "mnist"):
 		image_size = (28,28)
-		in_channels = 1
-		out_channels = 1
 		n_channels = 1
 		mnist_data_root = "./data/mnist"
 		if(not os.path.isdir(mnist_data_root)):
 			os.makedirs(mnist_data_root, exist_ok=True)
-		target_loader = mnist_data_loader(data_root=mnist_data_root, image_size=image_size,batch_size=batch_size,shuffle=shuffle_target)
+		data_loader = mnist_data_loader(data_root=mnist_data_root, image_size=image_size,batch_size=batch_size,shuffle=shuffle_data)
 		
-	elif(target_dataset == "cifar10"):
+	elif(dataset_name == "cifar10"):
 		image_size = (32,32)
-		in_channels = 3
-		out_channels = 3
 		n_channels = 3
 		cifar10_data_root = "./data/cifar10"
 		if(not os.path.isdir(cifar10_data_root)):
 			os.makedirs(cifar10_data_root, exist_ok=True)
 			
-		target_loader = cifar10_data_loader(data_root=cifar10_data_root, image_size=image_size,batch_size=batch_size,shuffle=shuffle_target)
-	elif(target_dataset == "gaussian"):
-		in_channels = 1
-		out_channels = 1
-		n_channels = 1
+		data_loader = cifar10_data_loader(data_root=cifar10_data_root, image_size=image_size,batch_size=batch_size,shuffle=shuffle_data)
+	elif(dataset_name == "gaussian"):
+		n_channels = n_channels
 		if(image_size == -1):
 			raise ValueError("If you choose a Gaussian as the target data, you must specify the image size")
-		image_size = (image_size,image_size)
+		if(np.isscalar(image_size)):
+			image_size = (image_size,image_size)
 		# if we use a gaussian, set an artificial "length" of the database, otherwise infinite loop
-		target_loader = RandomLoader("gaussian", (batch_size,n_channels,image_size[0],image_size[0]),length=1000)
+		data_loader = RandomLoader("gaussian", (batch_size,n_channels,image_size[0],image_size[0]),length=1000)
 	else: 
-		# custom target database, in one folder. 
-		if( not os.path.isdir(target_dataset)):
-			print("Target dataset : ", target_dataset)
+		# custom database, in one folder. 
+		if( not os.path.isdir(dataset_name)):
+			print("Dataset : ", dataset_name)
 
 		# determine image size automatically if necessary
 		# by default, this size is chosen to be the size of the first image in the database
 		if(image_size == -1):
-			img_0 = get_first_image_dir(target_dataset)
+			img_0 = get_first_image_dir(dataset_name)
 			image_size = (img_0.shape[1],img_0.shape[2])
-		else: # convert image to square size, if image size specified
+		elif(np.isscalar(image_size)):
+			# convert image to square size, if image size specified and is a scalar
 			image_size = (image_size,image_size)
 		# determine number of channels automatically if necessary
 		if(n_channels == -1):
-			img_0 = get_first_image_dir(target_dataset)
+			img_0 = get_first_image_dir(dataset_name)
 			n_channels = img_0.shape[0]
-		# input and output channels are necessarily equal
-		in_channels = n_channels
-		out_channels = n_channels
 
-		target_loader,target_data_base = custom_dataloader(root_dir=target_dataset,\
+		data_loader,data_base = custom_dataloader(root_dir=dataset_name,\
 			image_size=image_size, n_channels=n_channels,\
-			batch_size = batch_size, num_workers = 4, shuffle = shuffle_target)
-
-
-
-	# second, source distribution setup
-	# this can be either a pre-defined distribution specified by a string,
-	# or a database specified by a directory name
-	if(source_dataset == "gaussian"):
-		source_loader = RandomLoader("gaussian", (batch_size,n_channels,image_size[0],image_size[0]))
-	else:
-		# custom database, in one folder
-		# check if source_dataset is a directory name
-		if( not os.path.isdir(source_dataset)):
-			raise ValueError("Error, source_dataset must be either a known distribution or a directory")
-			print("Source dataset : ", source_dataset)
-
-		# the size and number of channels is now imposed by the target distribution
-		source_loader,source_data_base = custom_dataloader(root_dir=source_dataset,\
-			image_size=image_size, n_channels=n_channels,\
-			batch_size = batch_size, num_workers = 4, shuffle = shuffle_source)
+			batch_size = batch_size, num_workers = 4, shuffle = shuffle_data)
 	
-	data_loader = FMloader(target_loader,source_loader)
-	
-	return(data_loader,target_loader,source_loader,image_size,in_channels,out_channels)
+	return(data_loader,image_size,n_channels)
+
 
 class FMloader:
     """
@@ -130,40 +108,6 @@ class FMloader:
 
     def __len__(self):
         return len(self.target_loader)
-
-# class FMloader:
-#     """
-#     Iterates over all batches of target_loader.
-#     source_loader is cycled automatically if it is shorter.
-
-#     Usage:
-#         loader = FMloader(target_loader,source_loader)
-#         for x_src, x_tgt in loader:
-#             ...
-#     """
-#     def __init__(self, target_loader,source_loader):
-#         self.target_loader = target_loader
-#         self.source_loader = source_loader
-
-#     def __iter__(self):
-#         import itertools
-
-#         src_iter = itertools.cycle(self.source_loader)   # infinite cycling
-#         tgt_iter = iter(self.target_loader)             # finite
-
-#         for batch_tgt in tgt_iter:  # iterate over all target batches
-#             batch_src = next(src_iter)
-
-
-#             # if dataset returns (input, label), extract only inputs
-#             x_src = batch_src[0] if isinstance(batch_src, (tuple, list)) else batch_src
-#             x_tgt = batch_tgt[0] if isinstance(batch_tgt, (tuple, list)) else batch_tgt
-
-#             yield x_src, x_tgt
-
-#     def __len__(self):
-#         # Length equals target_loader length
-#         return len(self.target_loader)
 
 class RandomLoader:
     """
