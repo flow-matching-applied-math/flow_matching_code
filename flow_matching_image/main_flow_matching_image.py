@@ -136,21 +136,6 @@ def sample_euler_trajectory(model, source_loader, n_samples, steps=50, device="c
 
 	return traj
 
-	# model.eval()
-	# h = 1.0 / steps
-	# torch.manual_seed(123)
-	
-	# # get batch of source data
-	# x = (next(iter(source_loader))[:n_samples,:,:,:]).to(device)
-	# frames = []
-	# for k in range(steps):
-	# 	t = torch.full((x.shape[0],), (k + 0.5) / steps, device=device)
-	# 	v, _ = get_velocity(model, x, t, arch)
-	# 	x = x + h * v
-	# 	frames.append(x)
-	# traj = torch.stack(frames, dim=0)
-	# return traj
-
 # ----------------------------
 # Main
 # ----------------------------
@@ -227,7 +212,7 @@ def main():
 			
 
 		if not (img_size_target == img_size_source and n_channels_target == n_channels_source):
-			raise ValueError("Error in the creation of the data loaders: the image sizes and number of channels are consistent between source and target.")
+			raise ValueError("Error in the creation of the data loaders: the image sizes and number of channels are inconsistent between source and target.")
 		image_size = img_size_target
 		n_channels = n_channels_target
 
@@ -334,6 +319,7 @@ def main():
 			traj,
 			Path(args.save_dir) / f"{target_dataset_name}_{args.arch}_{args.schedule}_samples.png"
 		)
+		print("Saved results to : ", Path(args.save_dir) / f"{target_dataset_name}_{args.arch}_{args.schedule}_samples.png")
 
 if __name__ == "__main__":
 	main()

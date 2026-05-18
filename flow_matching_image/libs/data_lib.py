@@ -60,7 +60,8 @@ def setup_data_loader(dataset_name="mnist",shuffle_data=1,image_size=-1,n_channe
 		if(image_size == -1):
 			img_0 = get_first_image_dir(dataset_name)
 			image_size = (img_0.shape[1],img_0.shape[2])
-		else: # convert image to square size, if image size specified
+		elif(np.isscalar(image_size)):
+			# convert image to square size, if image size specified and is a scalar
 			image_size = (image_size,image_size)
 		# determine number of channels automatically if necessary
 		if(n_channels == -1):
