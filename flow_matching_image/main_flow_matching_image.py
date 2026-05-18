@@ -42,22 +42,13 @@ def save_trajectory_grid(traj, path):
 	vutils.save_image(grid, path)
 
 # ----------------------------
-# FM pieces (arch-agnostic)
+# FM pieces
 # ----------------------------
 
 
 def get_velocity(model, xt, t, arch: str):
-	if arch == "potential":
-		xt = xt.detach().requires_grad_(True)
-		psi = model(xt, t)
-		# v ~ (x_1-x_0)
-		# v = \nabla ( \sum_i^B \psi(xt_i))
-		#\nabla_{x_1}( psi(x_1) + psi(x_2)+ psi(x_3)) = \nabla_{x_1}( psi(x_1))
-		v = torch.autograd.grad(psi.sum(), xt, create_graph=True)[0]
-		return v, xt
-	else:
-		v = model(xt, t)
-		return v, xt
+	v = model(xt, t)
+	return v, xt
 
 # ---- schedules ----
 def coeffs_and_derivs(t: torch.Tensor, schedule: str):
@@ -74,7 +65,7 @@ def coeffs_and_derivs(t: torch.Tensor, schedule: str):
 		a0_dot = -(math.pi * 0.5) * torch.sin(half_pi_t)
 		a1_dot = (math.pi * 0.5) * torch.cos(half_pi_t)
 		return a0, a1, a0_dot, a1_dot
-	elif schedule == "ddpm":
+	elif schedule == "sqrt":
 		epsilon=0.0000001
 		a0 = torch.sqrt(1-t)
 		a1 = torch.sqrt(t)
@@ -159,16 +150,12 @@ def main():
 	parser.add_argument("--image_size", type=int, default=-1)
 	parser.add_argument("--n_channels", type=int, default=1)
 	parser.add_argument("--seed", type=int, default=42)
-	parser.add_argument("--num_workers", type=int, default=2)
 	parser.add_argument("--ckpt_every", type=int, default=20)
 	parser.add_argument("--sample_every", type=int, default=20)
 	parser.add_argument("--samples_n", type=int, default=8)
 	parser.add_argument("--steps_sampler", type=int, default=20)
-	parser.add_argument("--max_samples", type=int, default=1000)
-	parser.add_argument("--subset_seed", type=int, default=123)
-	parser.add_argument("--classes", type=int, nargs="*", default=[1])
-	parser.add_argument("--arch", type=str, choices=["potential", "unet", "unet_tiny"], default="unet_tiny")
-	parser.add_argument("--schedule", type=str, choices=["linear", "cosine", "ddpm"], default="linear")
+	parser.add_argument("--arch", type=str, choices=["unet", "unet_small", "unet_tiny"], default="unet_tiny")
+	parser.add_argument("--schedule", type=str, choices=["linear", "cosine", "sqrt"], default="linear")
 	
 
 	args = parser.parse_args()
@@ -252,6 +239,9 @@ def main():
 	if args.arch == "unet_tiny":
 		model = UNetTiny(in_channels=n_channels, base=32, out_channels=n_channels).to(device)
 		print_model_stats(model, name="UNetTiny")
+	elif args.arch == "unet_small":
+		model = UNetSmall(in_channels=n_channels, out_channels=n_channels,c=64).to(device)
+		print_model_stats(model, name="UNetSmall")
 	elif args.arch == "unet":
 		model = UNet(in_channels=n_channels, out_channels=n_channels,c=64).to(device)
 		print_model_stats(model, name="UNet")

@@ -240,61 +240,6 @@ class ResBlock(nn.Module):
 		return self.act(y + s)
 
 
-
-# class UNetTiny(nn.Module):
-#     """
-#     Super small UNet for MNIST (28x28).
-#     Time conditioning: t is concatenated as an extra image channel at the input.
-#     """
-#     def __init__(self, in_channels=1, base=32, out_channels=1):
-#         super().__init__()
-#         c0 = in_channels + 1  # +1 for t-map
-#         c1, c2 = base, base * 2
-
-#         # Encoder
-#         self.enc1 = DoubleConv(c0, c1)          # 28x28
-#         self.down1 = nn.MaxPool2d(2)            # -> 14x14
-#         self.enc2 = DoubleConv(c1, c2)          # 14x14
-#         self.down2 = nn.MaxPool2d(2)            # -> 7x7
-
-#         # Bottleneck
-#         self.bott = DoubleConv(c2, c2)          # 7x7
-
-#         # Decoder
-#         self.up2 = nn.ConvTranspose2d(c2, c1, 2, stride=2)  # 7->14
-#         self.dec2 = DoubleConv(c1 + c2, c1)                 # concat skip
-#         self.up1 = nn.ConvTranspose2d(c1, c1, 2, stride=2)  # 14->28
-#         self.dec1 = DoubleConv(c1 + c1, c1)                 # concat skip
-
-#         self.out = nn.Conv2d(c1, out_channels, 1)
-#         #self.out.apply(init_kaiming)
-
-#     def forward(self, x, t):
-#         b, _, h, w = x.shape
-#         if t.dim() == 1:
-#             t = t.view(b, 1, 1, 1)
-#         elif t.dim() == 2 and t.shape[1] == 1:
-#             t = t.view(b, 1, 1, 1)
-#         tmap = t.expand(b, 1, h, w)
-#         x0 = torch.cat([x, tmap], dim=1)
-
-#         e1 = self.enc1(x0)
-#         p1 = self.down1(e1)
-
-#         e2 = self.enc2(p1)
-#         p2 = self.down2(e2)
-
-#         btt = self.bott(p2)
-
-#         u2 = self.up2(btt)
-#         d2 = self.dec2(torch.cat([u2, e2], dim=1))
-
-#         u1 = self.up1(d2)
-#         d1 = self.dec1(torch.cat([u1, e1], dim=1))
-
-#         return self.out(d1)  # velocity field shape == x
-
-
 class UNetSmall(nn.Module):
 	"""
 	UNet with long skip *additions* and residual blocks.
