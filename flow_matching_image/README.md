@@ -14,6 +14,7 @@ The main function is named ```main_flow_matching.py``` and allows several argume
 - ```model_path``` (str): path of the saved model checkpoint. Default=""
 - ```arch``` (string): name of the architecture to use (default: 'unet_tiny'). Options : unet_tiny, unet_small, unet
 - ```save_dir``` (string): directory to save results to
+- ```save_full_results``` (int): Save all the results to separate image files, with respect to batch index and time step, rather than one single grid image. Default=0
 - ```epochs``` (int): number of epochs to train model (default: 10)
 - ```batch_size``` (int): number of samples in a batch (default: 16)
 - ```image_size``` (int): size of the image (default: -1). If ``target_dataset`` is in the list of known databases, then the image size is already fixed, and this parameter is ignored. Otherwise (custom dataset)
