@@ -1,5 +1,6 @@
 import argparse, os, random, math
 import numpy as np
+import imageio
 from pathlib import Path
 from libs.data_lib import *
 import torch
@@ -35,11 +36,23 @@ def save_grid(x, path, nrow=8):
 	vutils.save_image(grid, path)
 
 @torch.no_grad()
-def save_trajectory_grid(traj, path):
+def save_trajectory_grid(traj, path, save_full_results=0):
 	steps, B, C, H, W = traj.shape
 	imgs = traj.permute(1, 0, 2, 3, 4).reshape(B * steps, C, H, W)
 	grid = vutils.make_grid(normalize_to_0_1(imgs), nrow=steps) #.clamp(0, 1)
 	vutils.save_image(grid, path)
+
+@torch.no_grad()
+def save_images(traj, path_name):
+	steps, B, C, H, W = traj.shape
+	# save all output images for the generation of this batch
+	for i in range(0,steps):
+		imgs_out = normalize_to_0_1(traj[i,:,:,:,:])
+		for j in range(0,B):
+			im_out = (imgs_out[j,:,:,:].permute(1,2,0)).detach().cpu().numpy()
+			#write image
+			imageio.imwrite(str(path_name)+"_batch_"+str(j).zfill(3)+"_step_"+str(i).zfill(3)+".png", (255*im_out).astype(np.uint8))
+
 
 # ----------------------------
 # FM pieces
@@ -136,13 +149,14 @@ def main():
 		help="Target distribution (must be a string or a directory")
 	parser.add_argument("--source_dataset", type=str, default="gaussian",\
 		help="Source distribution (must be a string or a directory)")
-	parser.add_argument("--shuffle_target", type=int, default="1",\
+	parser.add_argument("--shuffle_target", type=int, default=1,\
 		help="Whether to shuffle the target distribution or not (0 or 1)")
-	parser.add_argument("--shuffle_source", type=int, default="1",\
+	parser.add_argument("--shuffle_source", type=int, default=1,\
 		help="Whether to shuffle the source distribution or not (0 or 1)")
 	parser.add_argument("--train", type=int, default=1)
 	parser.add_argument("--model_path",type=str, default="")
 	parser.add_argument("--save_dir", type=str, default="./results")
+	parser.add_argument("--save_full_results", type=int, default=0)
 	parser.add_argument("--epochs", type=int, default=10)
 	parser.add_argument("--batch_size", type=int, default=16)
 	parser.add_argument("--lr", type=float, default=3e-4)
@@ -293,6 +307,8 @@ def main():
 					traj,
 					Path(args.save_dir) / f"{target_dataset_name}_{args.arch}_{args.schedule}_samples_epoch_{epoch:03d}.png"
 				)
+				if(args.save_full_results>0):
+					save_images(traj,Path(args.save_dir) / f"{target_dataset_name}_{args.arch}_{args.schedule}")
 	else:
 		ckpt = torch.load(args.model_path, map_location=device)
 		state_dict = ckpt["model"]
@@ -309,7 +325,9 @@ def main():
 			traj,
 			Path(args.save_dir) / f"{target_dataset_name}_{args.arch}_{args.schedule}_samples.png"
 		)
-		print("Saved results to : ", Path(args.save_dir) / f"{target_dataset_name}_{args.arch}_{args.schedule}_samples.png")
+		if(args.save_full_results>0):
+			save_images(traj,Path(args.save_dir) / f"{target_dataset_name}_{args.arch}_{args.schedule}")
+		print("Saved results to : ", Path(args.save_dir) / f"{target_dataset_name}_{args.arch}_{args.schedule}")
 
 if __name__ == "__main__":
 	main()

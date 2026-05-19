@@ -1,20 +1,35 @@
 #bash
 
+python main_flow_matching_image.py \
+   --train 0 \
+   --model_path "models/Flowers_unet.pt" \
+   --target_dataset "flowers" \
+   --source_dataset "gaussian" \
+   --image_size 160\
+   --save_dir ./results \
+   --epochs 1 \
+   --batch_size 64 \
+   --steps_sampler 40 \
+   --samples_n 4 \
+   --arch "unet" \
+   --image_size 160\
+   --n_channels 3\
+   --save_full_results 1
 
-python main_flow_matching.py \
-    --target_dataset "gaussian" \
-    --source_dataset "gaussian" \
-    --image_size 32\
-    --save_dir ./results \
-    --epochs 100 \
-    --batch_size 64 \
-    --steps_sampler 40 \
-    --arch "unet_tiny" \
-    --schedule "linear" \
-    --sample_every 10 \
-    --samples_n 4\
-    --lr 3e-4\
-    --ckpt_every 40
+#python main_flow_matching.py \
+#    --target_dataset "gaussian" \
+#    --source_dataset "gaussian" \
+#    --image_size 32\
+#    --save_dir ./results \
+#    --epochs 100 \
+#    --batch_size 64 \
+#    --steps_sampler 40 \
+#    --arch "unet_tiny" \
+#    --schedule "linear" \
+#    --sample_every 10 \
+#    --samples_n 4\
+#    --lr 3e-4\
+#    --ckpt_every 40
 
 # python main_flow_matching.py \
 #     --target_dataset "./data/disks" \
