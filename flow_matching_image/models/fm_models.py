@@ -98,6 +98,10 @@ class UNetTiny(nn.Module):
         # Decoder with additive skips
         u2 = self.up2(btt)       # (B, c2, 14, 14)
         s2 = u2 - e2             # add skip
+        # Why minus instead of plus in previous line ?
+        # Because if we consider that the lower layers calculate roughly x1, and the input is x0 (close to x0,
+        # where the problem is more difficult), and the output should be x1-x0,
+        # then the most logical skip is -e2
         d2 = self.dec2(s2)       # (B, c1, 14, 14)
 
         u1 = self.up1(d2)        # (B, c1, 28, 28)
@@ -105,6 +109,110 @@ class UNetTiny(nn.Module):
         d1 = self.dec1(s1)       # (B, c1, 28, 28)
 
         return self.out(d1)      # (B, out_channels, 28, 28)
+
+
+
+
+
+class ResBlock(nn.Module):
+	def __init__(self, c_in, c_out, act=nn.SiLU):
+		super().__init__()
+		self.act = act()
+		self.conv1 = nn.Conv2d(c_in, c_out, kernel_size=3, padding=1, bias=True)
+		self.conv2 = nn.Conv2d(c_out, c_out, kernel_size=3, padding=1, bias=True)
+		self.skip = nn.Identity() if c_in == c_out else nn.Conv2d(c_in, c_out, kernel_size=1, bias=True)
+		self.apply(init_kaiming)
+
+	def forward(self, x):
+		y = self.act(self.conv1(x))
+		y = self.act(self.conv2(y))
+		s = self.skip(x)
+		return self.act(y + s)
+
+
+class UNetSmall(nn.Module):
+	"""
+	UNet with long skip *additions* and residual blocks.
+	Maps (x, t) -> v(x, t) with same shape as x.
+	Time conditioning is concatenated as an extra channel at input.
+
+	Depth: 28 -> 14 -> 7 -> 4  (encoder)
+	       4  -> 7  -> 14 -> 28 (decoder)
+	"""
+	def __init__(self, in_channels: int = 1, out_channels: int = 1):
+		super().__init__()
+		C_in = in_channels + 1
+
+		# -------- Encoder --------
+		self.enc1 = ResBlock(C_in, 32, act=nn.SiLU)   # 28 x 28
+		self.pool1 = nn.MaxPool2d(2)                  # 28 -> 14
+
+		self.enc2 = ResBlock(32, 64, act=nn.SiLU)     # 14 x 14
+		self.pool2 = nn.MaxPool2d(2)                  # 14 -> 7
+
+		self.enc3 = ResBlock(64, 128, act=nn.SiLU)    # 7 x 7
+		self.down3 = nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1, bias=True)  # 7 -> 4
+
+		# Bottleneck (4 x 4)
+		self.bott = ResBlock(128, 128, act=nn.SiLU)
+
+		# -------- Decoder (additive long skips) --------
+		self.up3    = nn.ConvTranspose2d(128, 128, kernel_size=3, stride=2, padding=1, output_padding=0)  # 4 -> 7
+		self.iconv3 = nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=True)
+		self.dec3   = ResBlock(128, 128, act=nn.SiLU)   # was ResBlock(256,128)
+
+		self.up2    = nn.Upsample(scale_factor=2, mode="bilinear")   # 7 -> 14
+		self.iconv2 = nn.Conv2d(128, 64, kernel_size=3, padding=1, bias=True)
+		self.dec2   = ResBlock(64, 64, act=nn.SiLU)                  # was ResBlock(128,64)
+
+		self.up1    = nn.Upsample(scale_factor=2, mode="bilinear")   # 14 -> 28
+		self.iconv1 = nn.Conv2d(64, 32, kernel_size=3, padding=1, bias=True)
+		self.dec1   = ResBlock(32, 32, act=nn.SiLU)                  # was ResBlock(64,32)
+
+		self.out = nn.Conv2d(32, out_channels, kernel_size=3, padding=1, bias=True)
+
+		self.apply(init_kaiming)
+
+	def forward(self, x: torch.Tensor, t: torch.Tensor):
+		B, _, H, W = x.shape
+		if t.dim() == 1:
+			t = t.view(B, 1, 1, 1)
+		elif t.dim() == 2 and t.shape[1] == 1:
+			t = t.view(B, 1, 1, 1)
+
+		x_in = torch.cat([x, t.expand(B, 1, H, W)], dim=1)
+
+		# ----- Encode -----
+		e1 = self.enc1(x_in)               # 32 x 28 x 28
+		p1 = self.pool1(e1)                # 32 x 14 x 14
+
+		e2 = self.enc2(p1)                 # 64 x 14 x 14
+		p2 = self.pool2(e2)                # 64 x 7 x 7
+
+		e3 = self.enc3(p2)                 # 128 x 7 x 7
+		p3 = self.down3(e3)                # 128 x 4 x 4
+
+		# Bottleneck
+		b = self.bott(p3)                  # 128 x 4 x 4
+
+		# ----- Decode (add skips) -----
+		u3 = self.up3(b)                   # 128 x 7 x 7
+		u3 = self.iconv3(u3)               # 128 x 7 x 7
+		u3 = u3 - e3                       # skip
+		d3 = self.dec3(u3)                 # 128 x 7 x 7
+
+		u2 = self.up2(d3)                  # 128 x 14 x 14
+		u2 = self.iconv2(u2)               # 64 x 14 x 14
+		u2 = u2 - e2                       # ADD instead of concat
+		d2 = self.dec2(u2)                 # 64 x 14 x 14
+
+		u1 = self.up1(d2)                  # 64 x 28 x 28
+		u1 = self.iconv1(u1)               # 32 x 28 x 28
+		u1 = u1 - e1                       # skip
+		d1 = self.dec1(u1)                 # 32 x 28 x 28
+
+		return self.out(d1)                # out_channels x 28 x 28
+
 
 
 class DoubleConvUnetBig(nn.Module):
@@ -220,105 +328,3 @@ class UNet(nn.Module):
 
         # Final Convolution
         return self.final_conv(conv7)          # Shape: [batch, out_channels, H, W]
-
-
-
-
-class ResBlock(nn.Module):
-	def __init__(self, c_in, c_out, act=nn.SiLU):
-		super().__init__()
-		self.act = act()
-		self.conv1 = nn.Conv2d(c_in, c_out, kernel_size=3, padding=1, bias=True)
-		self.conv2 = nn.Conv2d(c_out, c_out, kernel_size=3, padding=1, bias=True)
-		self.skip = nn.Identity() if c_in == c_out else nn.Conv2d(c_in, c_out, kernel_size=1, bias=True)
-		self.apply(init_kaiming)
-
-	def forward(self, x):
-		y = self.act(self.conv1(x))
-		y = self.act(self.conv2(y))
-		s = self.skip(x)
-		return self.act(y + s)
-
-
-class UNetSmall(nn.Module):
-	"""
-	UNet with long skip *additions* and residual blocks.
-	Maps (x, t) -> v(x, t) with same shape as x.
-	Time conditioning is concatenated as an extra channel at input.
-
-	Depth: 28 -> 14 -> 7 -> 4  (encoder)
-	       4  -> 7  -> 14 -> 28 (decoder)
-	"""
-	def __init__(self, in_channels: int = 1, out_channels: int = 1):
-		super().__init__()
-		C_in = in_channels + 1
-
-		# -------- Encoder --------
-		self.enc1 = ResBlock(C_in, 32, act=nn.SiLU)   # 28 x 28
-		self.pool1 = nn.MaxPool2d(2)                  # 28 -> 14
-
-		self.enc2 = ResBlock(32, 64, act=nn.SiLU)     # 14 x 14
-		self.pool2 = nn.MaxPool2d(2)                  # 14 -> 7
-
-		self.enc3 = ResBlock(64, 128, act=nn.SiLU)    # 7 x 7
-		self.down3 = nn.Conv2d(128, 128, kernel_size=3, stride=2, padding=1, bias=True)  # 7 -> 4
-
-		# Bottleneck (4 x 4)
-		self.bott = ResBlock(128, 128, act=nn.SiLU)
-
-		# -------- Decoder (additive long skips) --------
-		self.up3    = nn.ConvTranspose2d(128, 128, kernel_size=3, stride=2, padding=1, output_padding=0)  # 4 -> 7
-		self.iconv3 = nn.Conv2d(128, 128, kernel_size=3, padding=1, bias=True)
-		self.dec3   = ResBlock(128, 128, act=nn.SiLU)   # was ResBlock(256,128)
-
-		self.up2    = nn.Upsample(scale_factor=2, mode="bilinear")   # 7 -> 14
-		self.iconv2 = nn.Conv2d(128, 64, kernel_size=3, padding=1, bias=True)
-		self.dec2   = ResBlock(64, 64, act=nn.SiLU)                  # was ResBlock(128,64)
-
-		self.up1    = nn.Upsample(scale_factor=2, mode="bilinear")   # 14 -> 28
-		self.iconv1 = nn.Conv2d(64, 32, kernel_size=3, padding=1, bias=True)
-		self.dec1   = ResBlock(32, 32, act=nn.SiLU)                  # was ResBlock(64,32)
-
-		self.out = nn.Conv2d(32, out_channels, kernel_size=3, padding=1, bias=True)
-
-		self.apply(init_kaiming)
-
-	def forward(self, x: torch.Tensor, t: torch.Tensor):
-		B, _, H, W = x.shape
-		if t.dim() == 1:
-			t = t.view(B, 1, 1, 1)
-		elif t.dim() == 2 and t.shape[1] == 1:
-			t = t.view(B, 1, 1, 1)
-
-		x_in = torch.cat([x, t.expand(B, 1, H, W)], dim=1)
-
-		# ----- Encode -----
-		e1 = self.enc1(x_in)               # 32 x 28 x 28
-		p1 = self.pool1(e1)                # 32 x 14 x 14
-
-		e2 = self.enc2(p1)                 # 64 x 14 x 14
-		p2 = self.pool2(e2)                # 64 x 7 x 7
-
-		e3 = self.enc3(p2)                 # 128 x 7 x 7
-		p3 = self.down3(e3)                # 128 x 4 x 4
-
-		# Bottleneck
-		b = self.bott(p3)                  # 128 x 4 x 4
-
-		# ----- Decode (add skips) -----
-		u3 = self.up3(b)                   # 128 x 7 x 7
-		u3 = self.iconv3(u3)               # 128 x 7 x 7
-		u3 = u3 - e3                       # ADD instead of concat
-		d3 = self.dec3(u3)                 # 128 x 7 x 7
-
-		u2 = self.up2(d3)                  # 128 x 14 x 14
-		u2 = self.iconv2(u2)               # 64 x 14 x 14
-		u2 = u2 - e2                       # ADD instead of concat
-		d2 = self.dec2(u2)                 # 64 x 14 x 14
-
-		u1 = self.up1(d2)                  # 64 x 28 x 28
-		u1 = self.iconv1(u1)               # 32 x 28 x 28
-		u1 = u1 - e1                       # ADD instead of concat
-		d1 = self.dec1(u1)                 # 32 x 28 x 28
-
-		return self.out(d1)                # out_channels x 28 x 28
